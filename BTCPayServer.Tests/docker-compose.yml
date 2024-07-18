@@ -2,7 +2,7 @@ version: "3"
 
 # Run `docker-compose up dev` for bootstrapping your development environment
 # Doing so will expose NBXplorer, Bitcoind RPC and postgres port to the host so that tests can Run,
-# The Visual Studio launch setting `Docker-regtest` is configured to use this environment.
+# The Visual Studio launch setting `Docker-signet` is configured to use this environment.
 services:
 
   tests:
@@ -12,7 +12,7 @@ services:
       args:
         CONFIGURATION_NAME: Release
     environment:
-      TESTS_BTCRPCCONNECTION: server=http://bitcoind:43782;ceiwHEbqWI83:DwubwWsoo3
+      TESTS_BTCRPCCONNECTION: server=http://172.17.0.1:43782;ceiwHEbqWI83:DwubwWsoo3
       TESTS_BTCNBXPLORERURL: http://nbxplorer:32838/
       TESTS_DB: "Postgres"
       TESTS_POSTGRES: User ID=postgres;Include Error Detail=true;Host=postgres;Port=5432;Database=btcpayserver
@@ -72,7 +72,7 @@ services:
   devlnd:
     image: btcpayserver/bitcoin:26.0
     environment:
-      BITCOIN_NETWORK: regtest
+      BITCOIN_NETWORK: signet
       BITCOIN_WALLETDIR: "/data/wallets"
       BITCOIN_EXTRA_ARGS: |
         deprecatedrpc=signrawtransaction
@@ -87,6 +87,7 @@ services:
 
   selenium:
     image: selenium/standalone-chrome:101.0
+    # network_mode: "host"
     extra_hosts:
       - "tests:172.23.0.18"
     expose:
@@ -96,17 +97,21 @@ services:
       custom:
 
   nbxplorer:
-    image: nicolasdorier/nbxplorer:2.5.0
+    # build:
+    #   context: ../../NBXplorer
+    #   dockerfile: Dockerfile
+    image: nbxplorer-mutinynet:latest
+    # image: nicolasdorier/nbxplorer:2.5.0
     restart: unless-stopped
     ports:
       - "32838:32838"
     expose:
       - "32838"
     environment:
-      NBXPLORER_NETWORK: regtest
+      NBXPLORER_NETWORK: signet
       NBXPLORER_CHAINS: "btc"
-      NBXPLORER_BTCRPCURL: http://bitcoind:43782/
-      NBXPLORER_BTCNODEENDPOINT: bitcoind:39388
+      NBXPLORER_BTCRPCURL: http://172.17.0.1:43782/
+      NBXPLORER_BTCNODEENDPOINT: 172.17.0.1:39388
       NBXPLORER_BTCRPCUSER: ceiwHEbqWI83
       NBXPLORER_BTCRPCPASSWORD: DwubwWsoo3
       NBXPLORER_BIND: 0.0.0.0:32838
@@ -116,37 +121,40 @@ services:
       NBXPLORER_POSTGRES: User ID=postgres;Include Error Detail=true;Host=postgres;Port=5432;Database=nbxplorer
       NBXPLORER_EXPOSERPC: 1
       NBXPLORER_NOAUTH: 1
-    depends_on:
-      - bitcoind
-
-  bitcoind:
-    restart: unless-stopped
-    image: btcpayserver/bitcoin:26.0
-    environment:
-      BITCOIN_NETWORK: regtest
-      BITCOIN_WALLETDIR: "/data/wallets"
-      BITCOIN_EXTRA_ARGS: |-
-        rpcuser=ceiwHEbqWI83
-        rpcpassword=DwubwWsoo3
-        rpcport=43782
-        rpcbind=0.0.0.0:43782
-        rpcallowip=0.0.0.0/0
-        port=39388
-        whitelist=0.0.0.0/0
-        zmqpubrawblock=tcp://0.0.0.0:28332
-        zmqpubrawtx=tcp://0.0.0.0:28333
-        deprecatedrpc=signrawtransaction
-        fallbackfee=0.0002
-    ports:
-      - "43782:43782"
-      - "39388:39388"
-    expose:
-      - "43782" # RPC
-      - "39388" # P2P
-      - "28332" # ZMQ
-      - "28333" # ZMQ
     volumes:
-      - "bitcoin_datadir:/data"
+    - "bitcoin_datadir:/data"
+      
+    # depends_on:
+    #   - bitcoind
+
+  # bitcoind:
+  #   restart: unless-stopped
+  #   image: btcpayserver/bitcoin:26.0
+  #   environment:
+  #     BITCOIN_NETWORK: signet
+  #     BITCOIN_WALLETDIR: "/data/wallets"
+  #     BITCOIN_EXTRA_ARGS: |-
+  #       rpcuser=ceiwHEbqWI83
+  #       rpcpassword=DwubwWsoo3
+  #       rpcport=43782
+  #       rpcbind=0.0.0.0:43782
+  #       rpcallowip=0.0.0.0/0
+  #       port=39388
+  #       whitelist=0.0.0.0/0
+  #       zmqpubrawblock=tcp://0.0.0.0:28332
+  #       zmqpubrawtx=tcp://0.0.0.0:28333
+  #       deprecatedrpc=signrawtransaction
+  #       fallbackfee=0.0002
+  #   ports:
+  #     - "43782:43782"
+  #     - "39388:39388"
+  #   expose:
+  #     - "43782" # RPC
+  #     - "39388" # P2P
+  #     - "28332" # ZMQ
+  #     - "28333" # ZMQ
+  #   volumes:
+  #     - "bitcoin_datadir:/data"
 
   customer_lightningd:
     image: btcpayserver/lightning:v24.02.2
@@ -155,11 +163,11 @@ services:
     environment:
       EXPOSE_TCP: "true"
       LIGHTNINGD_CHAIN: "btc"
-      LIGHTNINGD_NETWORK: "regtest"
+      LIGHTNINGD_NETWORK: "signet"
       LIGHTNINGD_OPT: |
         developer
         bitcoin-datadir=/etc/bitcoin
-        bitcoin-rpcconnect=bitcoind
+        bitcoin-rpcconnect=172.17.0.1
         announce-addr=customer_lightningd:9735
         log-level=debug
         funding-confirms=1
@@ -173,20 +181,20 @@ services:
     volumes:
       - "bitcoin_datadir:/etc/bitcoin"
       - "customer_lightningd_datadir:/root/.lightning"
-    depends_on:
-      - bitcoind
+    # depends_on:
+    #   - bitcoind
 
   merchant_lightningd:
-    image: btcpayserver/lightning:v24.02.2
+    image: btcpayserver/lightningd-signet:latest
     stop_signal: SIGKILL
     environment:
       EXPOSE_TCP: "true"
       LIGHTNINGD_CHAIN: "btc"
-      LIGHTNINGD_NETWORK: "regtest"
+      LIGHTNINGD_NETWORK: "signet"
       LIGHTNINGD_OPT: |
         developer
         bitcoin-datadir=/etc/bitcoin
-        bitcoin-rpcconnect=bitcoind
+        bitcoin-rpcconnect=172.17.0.1
         announce-addr=merchant_lightningd:9735
         funding-confirms=1
         log-level=debug
@@ -198,10 +206,10 @@ services:
       - "9735" # server port
       - "9835" # api port
     volumes:
-      - "bitcoin_datadir:/etc/bitcoin"
+      - "/home/cguida/.bitcoin/mutinynet:/etc/bitcoin"
       - "merchant_lightningd_datadir:/root/.lightning"
-    depends_on:
-      - bitcoind
+    # depends_on:
+    #   - bitcoind
 
   postgres:
     image:  postgres:13.4
@@ -217,19 +225,19 @@ services:
     restart: unless-stopped
     environment:
       LND_CHAIN: "btc"
-      LND_ENVIRONMENT: "regtest"
+      LND_ENVIRONMENT: "signet"
       LND_EXPLORERURL: "http://nbxplorer:32838/"
       LND_REST_LISTEN_HOST: http://merchant_lnd:8080
       LND_EXTRA_ARGS: |
         restlisten=merchant_lnd:8080
         rpclisten=127.0.0.1:10008
         rpclisten=merchant_lnd:10009
-        bitcoin.node=bitcoind
-        bitcoind.rpchost=bitcoind:43782
+        bitcoin.node=172.17.0.1
+        bitcoind.rpchost=172.17.0.1:43782
         bitcoind.rpcuser=ceiwHEbqWI83
         bitcoind.rpcpass=DwubwWsoo3
-        bitcoind.zmqpubrawblock=tcp://bitcoind:28332
-        bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        bitcoind.zmqpubrawblock=tcp://172.17.0.1:28332
+        bitcoind.zmqpubrawtx=tcp://172.17.0.1:28333
         externalip=merchant_lnd:9735
         bitcoin.defaultchanconfs=1
         no-macaroons=1
@@ -246,27 +254,27 @@ services:
     volumes:
       - "merchant_lnd_datadir:/data"
       - "bitcoin_datadir:/deps/.bitcoin"
-    depends_on:
-      - bitcoind
+    # depends_on:
+    #   - bitcoind
 
   customer_lnd:
     image: btcpayserver/lnd:v0.17.4-beta
     restart: unless-stopped
     environment:
       LND_CHAIN: "btc"
-      LND_ENVIRONMENT: "regtest"
+      LND_ENVIRONMENT: "signet"
       LND_EXPLORERURL: "http://nbxplorer:32838/"
       LND_REST_LISTEN_HOST: http://customer_lnd:8080
       LND_EXTRA_ARGS: |
         restlisten=customer_lnd:8080
         rpclisten=127.0.0.1:10008
         rpclisten=customer_lnd:10009
-        bitcoin.node=bitcoind
-        bitcoind.rpchost=bitcoind:43782
+        bitcoin.node=172.17.0.1
+        bitcoind.rpchost=172.17.0.1:43782
         bitcoind.rpcuser=ceiwHEbqWI83
         bitcoind.rpcpass=DwubwWsoo3
-        bitcoind.zmqpubrawblock=tcp://bitcoind:28332
-        bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        bitcoind.zmqpubrawblock=tcp://172.17.0.1:28332
+        bitcoind.zmqpubrawtx=tcp://172.17.0.1:28333
         externalip=customer_lnd:9735
         bitcoin.defaultchanconfs=1
         no-macaroons=1
@@ -282,8 +290,8 @@ services:
     volumes:
       - "customer_lnd_datadir:/root/.lnd"
       - "bitcoin_datadir:/deps/.bitcoin"
-    depends_on:
-      - bitcoind
+    # depends_on:
+    #   - bitcoind
 
   tor:
     restart: unless-stopped
@@ -292,8 +300,8 @@ services:
     environment:
         TOR_PASSWORD: btcpayserver
     ports:
-        - "9050:9050" # SOCKS
-        - "9051:9051" # Tor Control
+        - "9049:9050" # SOCKS
+        - "9052:9051" # Tor Control
     volumes:
         - "tor_datadir:/home/tor/.tor"
         - "torrcdir:/usr/local/etc/tor"
